@@ -20,6 +20,7 @@ const { toComponentAttrStore } = require('./componentAttrStore')
 const { toHydrationLoadersApplied } = require('./eleventy-config/toHydrationLoadersApplied')
 const { applyViteHtmlTransform } = require('./vite-middleware/applyViteHtmlTransform')
 const { applyEleventyConfig } = require('./eleventy-config')
+const toViteSSR = require('../cli/toViteSSR')
 
 // TODO: abstract based on renderer plugins configured
 // https://github.com/slinkity/slinkity/issues/55
@@ -55,13 +56,14 @@ function toEleventyIgnored(userEleventyIgnores, dir) {
  * @returns (eleventyConfig: Object) => Object - config we'll apply to the Eleventy object
  */
 module.exports = function slinkityConfig({ userSlinkityConfig, ...options }) {
-  const { dir, viteSSR, browserSyncOptions, environment } = options
+  const { dir, browserSyncOptions, environment } = options
   // TODO: ignore based on renderers (ex. ignore 'jsx' if the React renderer is applied)
   const eleventyIgnored = toEleventyIgnored(userSlinkityConfig.eleventyIgnores, dir)
   const componentAttrStore = toComponentAttrStore()
   const rendererMap = Object.fromEntries(
     userSlinkityConfig.renderers.map((renderer) => [renderer.name, renderer]),
   )
+  let viteSSR = null
 
   return function (eleventyConfig) {
     // TODO: abstract this to "applyEleventyConfig"
@@ -101,28 +103,41 @@ module.exports = function slinkityConfig({ userSlinkityConfig, ...options }) {
 
     if (environment === 'dev') {
       const urlToOutputHtmlMap = {}
+      let serverStarted = false
 
-      browserSync.create()
-      browserSync.init({
-        ...browserSyncOptions,
-        middleware: [
-          async function viteTransformMiddleware(req, res, next) {
-            const page = urlToOutputHtmlMap[toSlashesTrimmed(req.originalUrl)]
-            if (page) {
-              const { content, outputPath } = page
-              res.write(
-                await applyViteHtmlTransform(
-                  { content, outputPath, componentAttrStore, rendererMap },
-                  options,
-                ),
-              )
-              res.end()
-            } else {
-              next()
-            }
-          },
-          viteSSR.server.middlewares,
-        ],
+      eleventyConfig.on('afterBuild', async () => {
+        if (serverStarted) return
+
+        viteSSR = await toViteSSR({ dir, environment, userSlinkityConfig })
+        // Cache all renderers before starting the dev server
+        await Promise.all(
+          userSlinkityConfig.renderers.map((renderer) => viteSSR.toCommonJSModule(renderer.client)),
+        )
+
+        browserSync.create()
+        browserSync.init({
+          ...browserSyncOptions,
+          middleware: [
+            async function viteTransformMiddleware(req, res, next) {
+              const page = urlToOutputHtmlMap[toSlashesTrimmed(req.originalUrl)]
+              if (page) {
+                const { content, outputPath } = page
+                res.write(
+                  await applyViteHtmlTransform(
+                    { content, outputPath, componentAttrStore, rendererMap },
+                    { ...options, viteSSR },
+                  ),
+                )
+                res.end()
+              } else {
+                next()
+              }
+            },
+            viteSSR.server.middlewares,
+          ],
+        })
+
+        serverStarted = true
       })
 
       eleventyConfig.on('beforeBuild', () => {
@@ -146,10 +161,11 @@ module.exports = function slinkityConfig({ userSlinkityConfig, ...options }) {
     }
 
     if (environment === 'prod') {
+      viteSSR = toViteSSR({ dir, environment, userSlinkityConfig })
       eleventyConfig.addTransform('apply-vite', async function (content, outputPath) {
         return await applyViteHtmlTransform(
           { content, outputPath, componentAttrStore, rendererMap },
-          options,
+          { ...options, viteSSR },
         )
       })
     }

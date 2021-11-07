@@ -82,13 +82,11 @@ function applyUserConfigDir(dir = {}) {
 
     const environment = options.watch ? 'dev' : 'prod'
     const userSlinkityConfig = await readUserSlinkityConfig()
-    const viteSSR = await toViteSSR({ dir, environment, userSlinkityConfig })
     const browserSyncOptions = toBrowserSyncOptions({ port: options.port, outputDir: dir.output })
     const config = slinkityConfig({
       dir,
       environment,
       userSlinkityConfig,
-      viteSSR,
       browserSyncOptions,
     })
 

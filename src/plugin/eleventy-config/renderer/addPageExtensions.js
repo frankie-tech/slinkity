@@ -19,21 +19,26 @@ module.exports.addPageExtensions = function (
     eleventyConfig.addExtension(extension, {
       read: false,
       async getData(inputPath) {
-        const absInputPath = join(resolvedImportAliases.root, inputPath)
-        const loadedModule = await viteSSR.toComponentCommonJSModule(absInputPath)
-        return await renderer
-          .page({ loadedModule, eleventyConfig, extension })
-          .getData(loadedModule)
+        // const absInputPath = join(resolvedImportAliases.root, inputPath)
+        // const loadedModule = await viteSSR.toCommonJSModule(absInputPath)
+        // return await renderer
+        //   .page({ loadedModule, eleventyConfig, extension })
+        //   .getData(loadedModule)
+        return {}
       },
       compile(_, inputPath) {
         return async function render(data) {
           const absInputPath = join(resolvedImportAliases.root, inputPath)
-          const loadedModule = await viteSSR.toComponentCommonJSModule(absInputPath)
-          const { getProps, getHydrationMode, useFormatted11tyData } = await renderer.page({
-            loadedModule,
-            eleventyConfig,
-            extension,
-          })
+          // const loadedModule = await viteSSR.toCommonJSModule(absInputPath)
+          // const { getProps, getHydrationMode, useFormatted11tyData } = await renderer.page({
+          //   loadedModule,
+          //   eleventyConfig,
+          //   extension,
+          // })
+
+          const getProps = () => ({})
+          const getHydrationMode = () => 'eager'
+          const useFormatted11tyData = false
 
           const formattedData = useFormatted11tyData ? toFormattedDataForProps(data) : data
           const props = await getProps(formattedData)
